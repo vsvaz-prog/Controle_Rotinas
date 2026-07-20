@@ -486,24 +486,25 @@ def gerar_rotinas_fixas():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT * FROM rotinas
-        WHERE fixa='Sim'
-    """)
+    SELECT * FROM rotinas
+    WHERE fixa='Não'
+    ORDER BY id DESC
+""")
 
     fixas = cursor.fetchall()
 
     for r in fixas:
 
-        if r["ultima_geracao"] != data:
+        if not r["ultima_geracao"] or r["ultima_geracao"] != data:
 
             agora = datetime.now().strftime("%d/%m/%Y %H:%M")
 
             cursor.execute("""
-                INSERT INTO rotinas
-                (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
-                VALUES (?,?,?,?,?,?,?,?,?)
-            """,
-            (
+    INSERT INTO rotinas
+    (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
+    VALUES (?,?,?,?,?,?,?,?,?)
+""",
+(
     r["nome"],
     r["setor"],
     r["prioridade"],
@@ -533,7 +534,7 @@ def gerar_rotinas_fixas():
 @app.route("/")
 def inicio():
 
-    gerar_rotinas_fixas()
+   #gerar_rotinas_fixas()
 
     conn = get_conn()
     cursor = conn.cursor()
