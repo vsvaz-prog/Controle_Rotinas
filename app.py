@@ -5,7 +5,7 @@ from datetime import datetime, date
 app = Flask(__name__)
 
 DB = "rotinas.db"
-SETORES = ["PCP", "Produção", "Qualidade", "Manutenção", "Logística"]
+SETORES = ["PCP", "Produção", "Qualidade", "Desossa", "Miudos", "Expedição", "Compras", "RH", "Financeiro"]
 PRIORIDADES = ["Baixa", "Média", "Alta"]
 
 
