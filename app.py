@@ -1,10 +1,12 @@
 from flask import Flask, render_template_string, request, redirect
-import sqlite3
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime, date
 
 app = Flask(__name__)
 
-DB = "rotinas.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 SETORES = ["PCP", "Produção", "Qualidade", "Desossa", "Miudos", "Expedição", "Compras", "RH", "Financeiro"]
 PRIORIDADES = ["Baixa", "Média", "Alta"]
 
@@ -13,8 +15,10 @@ PRIORIDADES = ["Baixa", "Média", "Alta"]
 # Banco de dados
 # ---------------------------------------------------------------------------
 def get_conn():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor
+    )
     return conn
 
 
@@ -24,25 +28,42 @@ def init_db():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS rotinas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         nome TEXT NOT NULL,
         setor TEXT NOT NULL,
         prioridade TEXT NOT NULL,
         status TEXT NOT NULL,
         data_criacao TEXT NOT NULL,
-        prazo TEXT
+        prazo TEXT,
+        fixa TEXT DEFAULT 'Não',
+        frequencia TEXT DEFAULT '',
+        ultima_geracao TEXT DEFAULT ''
     )
     """)
 
-    try:
-        cursor.execute("ALTER TABLE rotinas ADD COLUMN fixa TEXT DEFAULT 'Não'")
-        cursor.execute("ALTER TABLE rotinas ADD COLUMN frequencia TEXT DEFAULT ''")
-        cursor.execute("ALTER TABLE rotinas ADD COLUMN ultima_geracao TEXT DEFAULT ''")
-        conn.commit()
-    except:
-        pass
-
     conn.commit()
+
+    try:
+        cursor.execute("""
+        ALTER TABLE rotinas 
+        ADD COLUMN IF NOT EXISTS fixa TEXT DEFAULT 'Não'
+        """)
+
+        cursor.execute("""
+        ALTER TABLE rotinas 
+        ADD COLUMN IF NOT EXISTS frequencia TEXT DEFAULT ''
+        """)
+
+        cursor.execute("""
+        ALTER TABLE rotinas 
+        ADD COLUMN IF NOT EXISTS ultima_geracao TEXT DEFAULT ''
+        """)
+
+        conn.commit()
+
+    except Exception as e:
+        print("Erro ao alterar tabela:", e)
+
     conn.close()
 
 
@@ -487,7 +508,7 @@ def gerar_rotinas_fixas():
 
     cursor.execute("""
     SELECT * FROM rotinas
-    WHERE fixa='Não'
+    WHERE fixa='Sim'
     ORDER BY id DESC
 """)
 
@@ -500,9 +521,9 @@ def gerar_rotinas_fixas():
             agora = datetime.now().strftime("%d/%m/%Y %H:%M")
 
             cursor.execute("""
-    INSERT INTO rotinas
-    (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
-    VALUES (?,?,?,?,?,?,?,?,?)
+INSERT INTO rotinas
+(nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
+VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
 """,
 (
     r["nome"],
@@ -516,10 +537,11 @@ def gerar_rotinas_fixas():
     data
 ))
 
+
             cursor.execute("""
                 UPDATE rotinas
-                SET ultima_geracao=?
-                WHERE id=?
+                SET ultima_geracao=%s
+                WHERE id=%s
             """,
             (data, r["id"]))
 
@@ -534,7 +556,7 @@ def gerar_rotinas_fixas():
 @app.route("/")
 def inicio():
 
-   #gerar_rotinas_fixas()
+    #gerar_rotinas_fixas()
 
     conn = get_conn()
     cursor = conn.cursor()
@@ -601,7 +623,7 @@ def criar():
             INSERT INTO rotinas
             (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
 
-            VALUES (?,?,?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
 
             (
@@ -643,8 +665,8 @@ def editar(id):
         cursor.execute(
             """
             UPDATE rotinas
-            SET nome=?, setor=?, prioridade=?, prazo=?
-            WHERE id=?
+            SET nome=%s, setor=%s, prioridade=%s, prazo=%s
+            WHERE id=%s
             """,
 
             (
@@ -665,7 +687,7 @@ def editar(id):
 
 
     cursor.execute(
-        "SELECT * FROM rotinas WHERE id=?",
+        "SELECT * FROM rotinas WHERE id=%s",
         (id,)
     )
 
@@ -695,7 +717,7 @@ def excluir(id):
 
 
     cursor.execute(
-        "DELETE FROM rotinas WHERE id=?",
+        "DELETE FROM rotinas WHERE id=%s",
         (id,)
     )
 
@@ -716,7 +738,7 @@ def concluir(id):
 
 
     cursor.execute(
-        "SELECT status FROM rotinas WHERE id=?",
+        "SELECT status FROM rotinas WHERE id=%s",
         (id,)
     )
 
@@ -732,8 +754,8 @@ def concluir(id):
         cursor.execute(
             """
             UPDATE rotinas
-            SET status=?
-            WHERE id=?
+            SET status=%s
+            WHERE id=%s
             """,
             (novo,id)
         )
