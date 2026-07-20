@@ -3,6 +3,7 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date
+from apscheduler.schedulers.background import BackgroundScheduler   # ← ADICIONA ESSA LINHA
 
 app = Flask(__name__)
 
@@ -68,7 +69,7 @@ def init_db():
 
 
 init_db()
-
+iniciar_agendador()
 
 # ---------------------------------------------------------------------------
 # Templates
@@ -548,7 +549,18 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
 
     conn.commit()
     conn.close()
-
+def iniciar_agendador():
+    scheduler = BackgroundScheduler(timezone="America/Sao_Paulo")
+    scheduler.add_job(
+        gerar_rotinas_fixas,
+        trigger="cron",
+        hour=0,
+        minute=0,
+        id="gerar_rotinas_fixas_diario",
+        replace_existing=True,
+    )
+    scheduler.start()
+    iniciar_agendador()   # ← ADICIONA ESSA LINHA (sem identação, começa na margem)
 # ---------------------------------------------------------------------------
 # Rotas
 # ---------------------------------------------------------------------------
@@ -772,6 +784,8 @@ def concluir(id):
 
 
 if __name__ == "__main__":
+
+
 
     app.run(
         host="0.0.0.0",
