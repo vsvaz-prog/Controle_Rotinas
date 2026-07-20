@@ -5,7 +5,7 @@ from datetime import datetime, date
 app = Flask(__name__)
 
 DB = "rotinas.db"
-SETORES = ["PCP";", "Produção", "Qualidade", "Manutenção", "Logística"]
+SETORES = ["PCP", "Produção", "Qualidade", "Manutenção", "Logística"]
 PRIORIDADES = ["Baixa", "Média", "Alta"]
 
 
@@ -33,6 +33,14 @@ def init_db():
         prazo TEXT
     )
     """)
+
+    try:
+        cursor.execute("ALTER TABLE rotinas ADD COLUMN fixa TEXT DEFAULT 'Não'")
+        cursor.execute("ALTER TABLE rotinas ADD COLUMN frequencia TEXT DEFAULT ''")
+        cursor.execute("ALTER TABLE rotinas ADD COLUMN ultima_geracao TEXT DEFAULT ''")
+        conn.commit()
+    except:
+        pass
 
     conn.commit()
     conn.close()
@@ -321,26 +329,36 @@ PAGINA_INICIO = """
     <h2>➕ Nova rotina</h2>
     <form method="POST" action="/criar">
         <div class="form-grid">
-            <div class="campo">
-                <label>Rotina</label>
-                <input name="nome" placeholder="Ex: Enviar relatório de produção" required>
-            </div>
-            <div class="campo">
-                <label>Setor</label>
-                <select name="setor">
-                    {% for s in setores %}
-                    <option value="{{ s }}">{{ s }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="campo">
-                <label>Prioridade</label>
-                <select name="prioridade">
-                    {% for p in prioridades %}
-                    <option value="{{ p }}" {% if p=="Média" %}selected{% endif %}>{{ p }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+<div class="campo">
+    <label>Rotina</label>
+    <input name="nome" placeholder="Ex: Enviar relatório de produção" required>
+</div>
+
+<div class="campo">
+    <label>Rotina fixa?</label>
+    <select name="fixa">
+        <option value="Não">Não</option>
+        <option value="Sim">Sim - todos os dias</option>
+    </select>
+</div>
+
+<div class="campo">
+    <label>Setor</label>
+    <select name="setor">
+        {% for s in setores %}
+        <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+<div class="campo">
+    <label>Prioridade</label>
+    <select name="prioridade">
+        {% for p in prioridades %}
+        <option value="{{ p }}">{{ p }}</option>
+        {% endfor %}
+    </select>
+</div>
             <div class="campo">
                 <label>Prazo</label>
                 <input type="date" name="prazo">
@@ -454,32 +472,99 @@ PAGINA_EDITAR = """
 </html>
 """
 
+def gerar_rotinas_fixas():
+
+    hoje = date.today()
+
+    # domingo não cria rotina
+    if hoje.weekday() == 6:
+        return
+
+    data = hoje.strftime("%d/%m/%Y")
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT * FROM rotinas
+        WHERE fixa='Sim'
+    """)
+
+    fixas = cursor.fetchall()
+
+    for r in fixas:
+
+        if r["ultima_geracao"] != data:
+
+            agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+            cursor.execute("""
+                INSERT INTO rotinas
+                (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """,
+            (
+    r["nome"],
+    r["setor"],
+    r["prioridade"],
+    "Pendente",
+    agora,
+    None,
+    "Não",
+    "",
+    data
+))
+
+            cursor.execute("""
+                UPDATE rotinas
+                SET ultima_geracao=?
+                WHERE id=?
+            """,
+            (data, r["id"]))
+
+
+    conn.commit()
+    conn.close()
 
 # ---------------------------------------------------------------------------
 # Rotas
 # ---------------------------------------------------------------------------
+
 @app.route("/")
 def inicio():
+
+    gerar_rotinas_fixas()
+
     conn = get_conn()
     cursor = conn.cursor()
+
     cursor.execute("SELECT * FROM rotinas ORDER BY id DESC")
     dados = cursor.fetchall()
+
     conn.close()
 
     hoje = date.today().isoformat()
 
     rotinas = []
+
     for r in dados:
         item = dict(r)
+
         item["atrasada"] = bool(
-            item["status"] == "Pendente" and item["prazo"] and item["prazo"] < hoje
+            item["status"] == "Pendente"
+            and item["prazo"]
+            and item["prazo"] < hoje
         )
+
         rotinas.append(item)
+
 
     total = len(rotinas)
     concluidas = sum(1 for r in rotinas if r["status"] == "Feito")
     pendentes = total - concluidas
+
     percentual = round((concluidas / total) * 100) if total else 0
+
 
     return render_template_string(
         PAGINA_INICIO,
@@ -495,82 +580,179 @@ def inicio():
 
 @app.route("/criar", methods=["POST"])
 def criar():
+
     nome = request.form["nome"].strip()
     setor = request.form.get("setor", SETORES[0])
     prioridade = request.form.get("prioridade", "Média")
     prazo = request.form.get("prazo") or None
+    fixa = request.form.get("fixa", "Não")
+
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
 
+
     if nome:
+
         conn = get_conn()
         cursor = conn.cursor()
+
         cursor.execute(
-            """INSERT INTO rotinas(nome, setor, prioridade, status, data_criacao, prazo)
-               VALUES (?,?,?,?,?,?)""",
-            (nome, setor, prioridade, "Pendente", agora, prazo),
+            """
+            INSERT INTO rotinas
+            (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
+
+            VALUES (?,?,?,?,?,?,?,?,?)
+            """,
+
+            (
+                nome,
+                setor,
+                prioridade,
+                "Pendente",
+                agora,
+                prazo,
+                fixa,
+                "Diária",
+                ""
+            )
         )
+
         conn.commit()
         conn.close()
+
 
     return redirect("/")
 
 
+
 @app.route("/editar/<int:id>", methods=["GET", "POST"])
 def editar(id):
+
     conn = get_conn()
     cursor = conn.cursor()
 
+
     if request.method == "POST":
+
         nome = request.form["nome"].strip()
         setor = request.form.get("setor", SETORES[0])
         prioridade = request.form.get("prioridade", "Média")
         prazo = request.form.get("prazo") or None
 
+
         cursor.execute(
-            """UPDATE rotinas SET nome=?, setor=?, prioridade=?, prazo=? WHERE id=?""",
-            (nome, setor, prioridade, prazo, id),
+            """
+            UPDATE rotinas
+            SET nome=?, setor=?, prioridade=?, prazo=?
+            WHERE id=?
+            """,
+
+            (
+                nome,
+                setor,
+                prioridade,
+                prazo,
+                id
+            )
         )
+
+
         conn.commit()
         conn.close()
+
         return redirect("/")
 
-    cursor.execute("SELECT * FROM rotinas WHERE id=?", (id,))
+
+
+    cursor.execute(
+        "SELECT * FROM rotinas WHERE id=?",
+        (id,)
+    )
+
     r = cursor.fetchone()
+
     conn.close()
+
 
     if r is None:
         return redirect("/")
 
+
     return render_template_string(
-        PAGINA_EDITAR, r=dict(r), setores=SETORES, prioridades=PRIORIDADES
+        PAGINA_EDITAR,
+        r=dict(r),
+        setores=SETORES,
+        prioridades=PRIORIDADES
     )
+
 
 
 @app.route("/excluir/<int:id>")
 def excluir(id):
+
     conn = get_conn()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM rotinas WHERE id=?", (id,))
+
+
+    cursor.execute(
+        "DELETE FROM rotinas WHERE id=?",
+        (id,)
+    )
+
+
     conn.commit()
     conn.close()
+
+
     return redirect("/")
+
 
 
 @app.route("/concluir/<int:id>")
 def concluir(id):
+
     conn = get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT status FROM rotinas WHERE id=?", (id,))
+
+
+    cursor.execute(
+        "SELECT status FROM rotinas WHERE id=?",
+        (id,)
+    )
+
+
     row = cursor.fetchone()
 
+
     if row:
+
         novo = "Feito" if row["status"] == "Pendente" else "Pendente"
-        cursor.execute("UPDATE rotinas SET status=? WHERE id=?", (novo, id))
+
+
+        cursor.execute(
+            """
+            UPDATE rotinas
+            SET status=?
+            WHERE id=?
+            """,
+            (novo,id)
+        )
+
+
         conn.commit()
 
+
     conn.close()
+
+
     return redirect("/")
 
 
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True,
+        use_reloader=False
+    )
