@@ -549,6 +549,7 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
 
     conn.commit()
     conn.close()
+
 def iniciar_agendador():
     scheduler = BackgroundScheduler(timezone="America/Sao_Paulo")
     scheduler.add_job(
@@ -560,7 +561,9 @@ def iniciar_agendador():
         replace_existing=True,
     )
     scheduler.start()
-    iniciar_agendador()   # ← ADICIONA ESSA LINHA (sem identação, começa na margem)
+
+iniciar_agendador()
+
 # ---------------------------------------------------------------------------
 # Rotas
 # ---------------------------------------------------------------------------
