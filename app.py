@@ -21,17 +21,19 @@ def get_conn():
 def init_db():
     conn = get_conn()
     cursor = conn.cursor()
+
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS rotinas(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            setor TEXT NOT NULL DEFAULT 'PCP',
-            prioridade TEXT NOT NULL DEFAULT 'Média',
-            status TEXT NOT NULL DEFAULT 'Pendente',
-            data_criacao TEXT NOT NULL,
-            prazo TEXT
-        )
+    CREATE TABLE IF NOT EXISTS rotinas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        setor TEXT NOT NULL,
+        prioridade TEXT NOT NULL,
+        status TEXT NOT NULL,
+        data_criacao TEXT NOT NULL,
+        prazo TEXT
+    )
     """)
+
     conn.commit()
     conn.close()
 
@@ -571,4 +573,4 @@ def concluir(id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
