@@ -581,6 +581,22 @@ PAGINA_INICIO = """
 </section>
 
 </div>
+<!-- RODAPÉ - CONTROLE DE ROTINAS -->
+<footer style="
+    margin-top: 40px;
+    padding: 15px;
+    text-align: center;
+    color: #777;
+    font-size: 13px;
+">
+    <hr>
+    Controle de Rotinas v1.0<br>
+    Desenvolvido por Valdeir Vaz<br>
+    2026
+    <hr>
+</footer>
+<!-- FIM RODAPÉ -->
+
 </body>
 </html>
 """
