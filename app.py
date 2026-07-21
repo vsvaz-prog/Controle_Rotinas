@@ -8,7 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler   # ← ADICIO
 app = Flask(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-SETORES = ["PCP", "Produção", "Qualidade", "Desossa", "Miudos", "Expedição", "Compras", "RH", "Financeiro"]
+SETORES = ["PCP", "Produção", "Qualidade", "Desossa", "Miudos", "Expedição", "Compras", "RH", "Financeiro","Outros "]
 PRIORIDADES = ["Baixa", "Média", "Alta"]
 
 
