@@ -42,6 +42,13 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS controle_sistema (
+        chave TEXT PRIMARY KEY,
+        valor TEXT
+    )
+    """)
+
     conn.commit()
 
     try:
@@ -275,6 +282,8 @@ BASE_STYLE = """
     .tag.status-pendente{ background:var(--laranja-claro); color:var(--laranja); }
     .tag.status-atrasado{ background:var(--vermelho-claro); color:var(--vermelho); }
 
+    .tag.fixa{ background:#ede9fe; color:#7c3aed; }
+
     .acoes{
         display:flex;
         gap:6px;
@@ -406,6 +415,10 @@ PAGINA_INICIO = """
                 <span class="tag setor">{{ r['setor'] }}</span>
                 <span class="tag prioridade-{{ r['prioridade']|lower }}">{{ r['prioridade'] }}</span>
 
+                {% if r['fixa']=='Sim' %}
+                    <span class="tag fixa">🔁 Fixa</span>
+                {% endif %}
+
                 {% if r['status']=='Feito' %}
                     <span class="tag status-feito">✅ Feito</span>
                 {% elif r['atrasada'] %}
@@ -479,6 +492,14 @@ PAGINA_EDITAR = """
             </select>
         </div>
 
+        <div class="campo" style="margin-bottom:12px;">
+            <label>Rotina fixa?</label>
+            <select name="fixa">
+                <option value="Não" {% if r['fixa']!='Sim' %}selected{% endif %}>Não</option>
+                <option value="Sim" {% if r['fixa']=='Sim' %}selected{% endif %}>Sim - todos os dias</option>
+            </select>
+        </div>
+
         <div class="campo" style="margin-bottom:16px;">
             <label>Prazo</label>
             <input type="date" name="prazo" value="{{ r['prazo'] or '' }}">
@@ -493,70 +514,80 @@ PAGINA_EDITAR = """
 </html>
 """
 
-def gerar_rotinas_fixas():
 
-    hoje = date.today()
-
-    # domingo não cria rotina
-    if hoje.weekday() == 6:
-        return
-
-    data = hoje.strftime("%d/%m/%Y")
-
+# ---------------------------------------------------------------------------
+# Virada de dia (meia-noite)
+# ---------------------------------------------------------------------------
+def processar_virada_dia():
+    """
+    Regra da virada do dia:
+    - Rotinas FIXAS: continuam sendo a MESMA linha, só voltam para
+      'Pendente' (mesmo que tivessem sido concluídas no dia anterior,
+      pois já é outro dia).
+    - Rotinas NÃO FIXAS que foram concluídas: somem (são excluídas).
+    - Rotinas NÃO FIXAS que NÃO foram concluídas: continuam do jeito
+      que estão, sem nenhuma alteração.
+    """
     conn = get_conn()
     cursor = conn.cursor()
 
+    # Fixas voltam para pendente todo dia
     cursor.execute("""
-    SELECT * FROM rotinas
-    WHERE fixa='Sim'
-    ORDER BY id DESC
-""")
+        UPDATE rotinas
+        SET status='Pendente'
+        WHERE fixa='Sim'
+    """)
 
-    fixas = cursor.fetchall()
-
-    for r in fixas:
-
-        if not r["ultima_geracao"] or r["ultima_geracao"] != data:
-
-            agora = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-            cursor.execute("""
-INSERT INTO rotinas
-(nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
-VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-""",
-(
-    r["nome"],
-    r["setor"],
-    r["prioridade"],
-    "Pendente",
-    agora,
-    None,
-    "Não",
-    "",
-    data
-))
-
-
-            cursor.execute("""
-                UPDATE rotinas
-                SET ultima_geracao=%s
-                WHERE id=%s
-            """,
-            (data, r["id"]))
-
+    # Não fixas concluídas somem
+    cursor.execute("""
+        DELETE FROM rotinas
+        WHERE fixa='Não' AND status='Feito'
+    """)
 
     conn.commit()
     conn.close()
 
+
+def verificar_virada_dia():
+    """
+    Roda a virada do dia caso ainda não tenha sido feita hoje.
+    Isso garante que, mesmo se o agendador não tiver disparado
+    exatamente à meia-noite (ex: servidor reiniciando, hibernando),
+    a regra é aplicada assim que alguém abrir o app no dia seguinte.
+    """
+    hoje = date.today().isoformat()
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT valor FROM controle_sistema WHERE chave='ultima_virada'")
+    row = cursor.fetchone()
+    ultima = row["valor"] if row else None
+
+    conn.close()
+
+    if ultima != hoje:
+        processar_virada_dia()
+
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO controle_sistema (chave, valor)
+            VALUES ('ultima_virada', %s)
+            ON CONFLICT (chave) DO UPDATE SET valor=%s
+        """, (hoje, hoje))
+        conn.commit()
+        conn.close()
+
+
 def iniciar_agendador():
     scheduler = BackgroundScheduler(timezone="America/Sao_Paulo")
     scheduler.add_job(
-        gerar_rotinas_fixas,
+        verificar_virada_dia,
         trigger="cron",
         hour=0,
         minute=0,
-        id="gerar_rotinas_fixas_diario",
+        id="virada_de_dia",
         replace_existing=True,
     )
     scheduler.start()
@@ -570,7 +601,7 @@ iniciar_agendador()
 @app.route("/")
 def inicio():
 
-    #gerar_rotinas_fixas()
+    verificar_virada_dia()
 
     conn = get_conn()
     cursor = conn.cursor()
@@ -648,7 +679,7 @@ def criar():
                 agora,
                 prazo,
                 fixa,
-                "Diária",
+                "Diária" if fixa == "Sim" else "",
                 ""
             )
         )
@@ -674,12 +705,13 @@ def editar(id):
         setor = request.form.get("setor", SETORES[0])
         prioridade = request.form.get("prioridade", "Média")
         prazo = request.form.get("prazo") or None
+        fixa = request.form.get("fixa", "Não")
 
 
         cursor.execute(
             """
             UPDATE rotinas
-            SET nome=%s, setor=%s, prioridade=%s, prazo=%s
+            SET nome=%s, setor=%s, prioridade=%s, prazo=%s, fixa=%s
             WHERE id=%s
             """,
 
@@ -688,6 +720,7 @@ def editar(id):
                 setor,
                 prioridade,
                 prazo,
+                fixa,
                 id
             )
         )
