@@ -546,27 +546,25 @@ PAGINA_INICIO = """
             <div>
             <div class="nome">{{ r['nome'] }}</div>
             <div class="meta">
-                <span class="tag setor">{{ r['setor'] }}</span>
-                <span class="tag prioridade-{{ r['prioridade']|lower }}">{{ r['prioridade'] }}</span>
+    <span class="tag setor">{{ r['setor'] }}</span>
+    <span class="tag prioridade-{{ r['prioridade']|lower }}">{{ r['prioridade'] }}</span>
 
-                {% if r['fixa']=='Sim' %}
-                    <span class="tag fixa">🔁 Fixa</span>
-                {% endif %}
+    {% if r['fixa']=='Sim' %}
+        <span class="tag fixa">🔁 Fixa</span>
+    {% endif %}
 
-                {% if r['status']=='Feito' %}
-                    <span class="tag status-feito">Feito</span>
-                {% elif r['atrasada'] %}
-                    <span class="tag status-atrasado">Atrasada</span>
-                {% else %}
-                    <span class="tag status-pendente">Pendente</span>
-                {% endif %}
+    {% if r['status']=='Feito' %}
+        <span class="tag status-feito">Feito</span>
+    {% elif r['atrasada'] %}
+        <span class="tag status-atrasado">Atrasada</span>
+    {% else %}
+        <span class="tag status-pendente">Pendente</span>
+    {% endif %}
 
-                <span class="tag setor">criada em {{ r['data_criacao'] }}</span>
-
-                {% if r['prazo'] %}
-                <span class="tag setor">prazo {{ r['prazo'] }}</span>
-                {% endif %}
-            </div>
+    {% if r['prazo'] %}
+        <span class="tag setor">📅 {{ r['prazo'] }}</span>
+    {% endif %}
+</div>
             </div>
         </div>
         <div class="acoes">
