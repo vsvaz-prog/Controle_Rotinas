@@ -81,110 +81,184 @@ init_db()
 # Templates
 # ---------------------------------------------------------------------------
 BASE_STYLE = """
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
     :root{
-        --bg:#f4f6fb;
-        --card:#ffffff;
-        --texto:#1f2937;
-        --texto-suave:#6b7280;
-        --azul:#4f46e5;
-        --azul-claro:#eef2ff;
-        --verde:#16a34a;
-        --verde-claro:#ecfdf5;
-        --vermelho:#dc2626;
-        --vermelho-claro:#fef2f2;
-        --laranja:#d97706;
-        --laranja-claro:#fffbeb;
-        --borda:#e5e7eb;
-        --sombra: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+        --bg:#14181c;
+        --painel:#1c2329;
+        --painel-2:#212a31;
+        --borda:#323d47;
+        --borda-forte:#455261;
+        --texto:#e7eaec;
+        --texto-suave:#8b96a1;
+
+        --ambar:#f5a623;
+        --ambar-fundo:rgba(245,166,35,0.12);
+        --verde:#2ecc71;
+        --verde-fundo:rgba(46,204,113,0.12);
+        --vermelho:#eb4d4b;
+        --vermelho-fundo:rgba(235,77,75,0.14);
+        --azul:#4fa3d1;
+        --azul-fundo:rgba(79,163,209,0.12);
+        --roxo:#9d7ee8;
+        --roxo-fundo:rgba(157,126,232,0.14);
+
+        --display:'Oswald', sans-serif;
+        --corpo:'Inter', sans-serif;
+        --mono:'IBM Plex Mono', monospace;
     }
 
     *{ box-sizing:border-box; }
 
     body{
         margin:0;
-        font-family:'Segoe UI', Arial, sans-serif;
-        background:var(--bg);
+        font-family:var(--corpo);
+        background:
+            radial-gradient(ellipse at top, #1a2027 0%, var(--bg) 55%);
         color:var(--texto);
-        padding:24px;
+        padding:28px 20px 60px;
     }
 
     .container{
-        max-width:1000px;
+        max-width:1040px;
         margin:0 auto;
     }
 
+    /* ---------- Cabeçalho tipo placa de painel ---------- */
+    header{
+        position:relative;
+        background:var(--painel);
+        border:1px solid var(--borda);
+        border-radius:10px;
+        padding:22px 26px;
+        margin-bottom:26px;
+        overflow:hidden;
+    }
+
+    header::before{
+        content:"";
+        position:absolute;
+        top:0; left:0; right:0;
+        height:3px;
+        background:linear-gradient(90deg, var(--ambar) 0%, transparent 60%);
+    }
+
+    .rebite{
+        position:absolute;
+        width:7px; height:7px;
+        border-radius:50%;
+        background:radial-gradient(circle at 35% 30%, #5a6774, #232b32 70%);
+        box-shadow:0 1px 1px rgba(0,0,0,0.6);
+    }
+    .rebite.tl{ top:10px; left:10px; }
+    .rebite.tr{ top:10px; right:10px; }
+    .rebite.bl{ bottom:10px; left:10px; }
+    .rebite.br{ bottom:10px; right:10px; }
+
+    header .eyebrow{
+        font-family:var(--mono);
+        font-size:0.72rem;
+        letter-spacing:0.18em;
+        text-transform:uppercase;
+        color:var(--ambar);
+        margin:0 0 6px;
+    }
+
     header h1{
-        font-size:1.6rem;
-        margin-bottom:4px;
+        font-family:var(--display);
+        text-transform:uppercase;
+        letter-spacing:0.03em;
+        font-size:1.7rem;
+        font-weight:600;
+        margin:0 0 4px;
     }
 
     header p{
         color:var(--texto-suave);
-        margin-top:0;
-        margin-bottom:24px;
+        margin:0;
+        font-size:0.88rem;
     }
 
-    /* Dashboard */
+    /* ---------- Dashboard: contadores de painel ---------- */
     .dashboard{
         display:grid;
         grid-template-columns:repeat(4, 1fr);
-        gap:16px;
-        margin-bottom:28px;
+        gap:14px;
+        margin-bottom:26px;
     }
 
     .card{
-        background:var(--card);
-        border-radius:14px;
-        padding:18px;
-        box-shadow:var(--sombra);
+        background:var(--painel);
+        border-radius:8px;
+        padding:16px 18px;
         border:1px solid var(--borda);
-    }
-
-    .card .valor{
-        font-size:1.7rem;
-        font-weight:700;
+        border-top:2px solid var(--borda-forte);
     }
 
     .card .rotulo{
+        font-family:var(--mono);
+        text-transform:uppercase;
+        letter-spacing:0.1em;
         color:var(--texto-suave);
-        font-size:0.85rem;
-        margin-top:4px;
+        font-size:0.68rem;
+        margin-bottom:8px;
+    }
+
+    .card .valor{
+        font-family:var(--mono);
+        font-size:2rem;
+        font-weight:600;
+        line-height:1;
     }
 
     .card.total .valor{ color:var(--azul); }
     .card.concluidas .valor{ color:var(--verde); }
-    .card.pendentes .valor{ color:var(--laranja); }
-    .card.percentual .valor{ color:#7c3aed; }
+    .card.pendentes .valor{ color:var(--ambar); }
+    .card.percentual .valor{ color:var(--roxo); }
 
     .barra-progresso{
         width:100%;
-        height:8px;
-        background:var(--borda);
-        border-radius:6px;
+        height:6px;
+        background:#0f1317;
+        border:1px solid var(--borda);
+        border-radius:4px;
         overflow:hidden;
         margin-top:10px;
     }
 
     .barra-progresso .preenchido{
         height:100%;
-        background:var(--verde);
-        border-radius:6px;
+        background:repeating-linear-gradient(
+            135deg,
+            var(--roxo) 0px, var(--roxo) 6px,
+            #8064c9 6px, #8064c9 12px
+        );
     }
 
-    /* Formulário */
+    /* ---------- Formulário: "ordem de serviço" ---------- */
     .form-card{
-        background:var(--card);
-        border-radius:14px;
-        padding:20px;
-        box-shadow:var(--sombra);
+        background:var(--painel);
+        border-radius:8px;
         border:1px solid var(--borda);
-        margin-bottom:28px;
+        margin-bottom:26px;
+        overflow:hidden;
     }
 
-    .form-card h2{
-        margin-top:0;
-        font-size:1.1rem;
+    .form-card .titulo-painel{
+        background:var(--painel-2);
+        border-bottom:1px solid var(--borda);
+        padding:10px 18px;
+        font-family:var(--mono);
+        font-size:0.72rem;
+        letter-spacing:0.14em;
+        text-transform:uppercase;
+        color:var(--ambar);
+    }
+
+    .form-card .corpo-form{
+        padding:18px;
     }
 
     .form-grid{
@@ -196,50 +270,67 @@ BASE_STYLE = """
 
     .campo label{
         display:block;
-        font-size:0.8rem;
+        font-family:var(--mono);
+        font-size:0.68rem;
+        text-transform:uppercase;
+        letter-spacing:0.06em;
         color:var(--texto-suave);
-        margin-bottom:4px;
+        margin-bottom:5px;
     }
 
     input, select{
         width:100%;
         padding:9px 10px;
         border:1px solid var(--borda);
-        border-radius:8px;
-        font-size:0.9rem;
-        background:#fff;
+        border-radius:5px;
+        font-size:0.88rem;
+        font-family:var(--corpo);
+        background:#10151a;
         color:var(--texto);
     }
 
+    input:focus, select:focus{
+        outline:none;
+        border-color:var(--ambar);
+        box-shadow:0 0 0 2px var(--ambar-fundo);
+    }
+
     button, .btn{
-        padding:9px 16px;
-        border:none;
-        border-radius:8px;
-        background:var(--azul);
-        color:#fff;
-        font-weight:600;
+        padding:9px 18px;
+        border:1px solid transparent;
+        border-radius:5px;
+        background:var(--ambar);
+        color:#20160a;
+        font-weight:700;
+        font-family:var(--corpo);
         cursor:pointer;
-        font-size:0.9rem;
+        font-size:0.85rem;
         text-decoration:none;
         display:inline-block;
         text-align:center;
+        transition:filter 0.15s ease;
     }
 
-    button:hover, .btn:hover{ opacity:0.9; }
+    button:hover, .btn:hover{ filter:brightness(1.1); }
 
-    /* Lista de rotinas */
-    .lista h2{
-        font-size:1.1rem;
+    /* ---------- Lista de rotinas: quadro de estações ---------- */
+    .lista .titulo-lista{
+        font-family:var(--display);
+        text-transform:uppercase;
+        letter-spacing:0.05em;
+        font-size:1.05rem;
+        font-weight:600;
         margin-bottom:12px;
+        color:var(--texto);
     }
 
     .rotina{
-        background:var(--card);
+        background:var(--painel);
         border:1px solid var(--borda);
-        border-radius:12px;
-        padding:14px 16px;
-        margin-bottom:10px;
-        box-shadow:var(--sombra);
+        border-left:4px solid var(--borda-forte);
+        border-radius:6px;
+        padding:13px 16px;
+        margin-bottom:9px;
         display:flex;
         justify-content:space-between;
         align-items:center;
@@ -247,42 +338,63 @@ BASE_STYLE = """
         flex-wrap:wrap;
     }
 
-    .rotina.feita{ opacity:0.7; }
+    .rotina.status-feito{ border-left-color:var(--verde); opacity:0.72; }
+    .rotina.status-pendente{ border-left-color:var(--ambar); }
+    .rotina.status-atrasado{ border-left-color:var(--vermelho); }
 
-    .rotina .info{ flex:1; min-width:200px; }
+    .rotina .info{ flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px; }
+
+    /* luz estilo andon */
+    .luz{
+        width:11px; height:11px;
+        border-radius:50%;
+        margin-top:5px;
+        flex-shrink:0;
+        background:var(--texto-suave);
+    }
+    .luz.feito{ background:var(--verde); box-shadow:0 0 7px 2px rgba(46,204,113,0.65); }
+    .luz.pendente{ background:var(--ambar); box-shadow:0 0 7px 2px rgba(245,166,35,0.55); }
+    .luz.atrasado{
+        background:var(--vermelho);
+        box-shadow:0 0 7px 2px rgba(235,77,75,0.65);
+        animation:pulsar 1.3s ease-in-out infinite;
+    }
+    @keyframes pulsar{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
 
     .rotina .nome{
         font-weight:600;
-        font-size:1rem;
-        margin-bottom:4px;
+        font-size:0.98rem;
+        margin-bottom:5px;
     }
 
-    .rotina.feita .nome{ text-decoration:line-through; }
+    .rotina.status-feito .nome{ text-decoration:line-through; color:var(--texto-suave); }
 
     .meta{
         display:flex;
-        gap:8px;
+        gap:7px;
         flex-wrap:wrap;
-        font-size:0.78rem;
+        font-size:0.72rem;
     }
 
     .tag{
         padding:3px 9px;
-        border-radius:999px;
+        border-radius:4px;
         font-weight:600;
+        font-family:var(--mono);
+        border:1px solid transparent;
     }
 
-    .tag.setor{ background:var(--azul-claro); color:var(--azul); }
+    .tag.setor{ background:var(--azul-fundo); color:var(--azul); border-color:rgba(79,163,209,0.3); }
 
-    .tag.prioridade-baixa{ background:var(--verde-claro); color:var(--verde); }
-    .tag.prioridade-média{ background:var(--laranja-claro); color:var(--laranja); }
-    .tag.prioridade-alta{ background:var(--vermelho-claro); color:var(--vermelho); }
+    .tag.prioridade-baixa{ background:var(--verde-fundo); color:var(--verde); border-color:rgba(46,204,113,0.3); }
+    .tag.prioridade-média{ background:var(--ambar-fundo); color:var(--ambar); border-color:rgba(245,166,35,0.3); }
+    .tag.prioridade-alta{ background:var(--vermelho-fundo); color:var(--vermelho); border-color:rgba(235,77,75,0.3); }
 
-    .tag.status-feito{ background:var(--verde-claro); color:var(--verde); }
-    .tag.status-pendente{ background:var(--laranja-claro); color:var(--laranja); }
-    .tag.status-atrasado{ background:var(--vermelho-claro); color:var(--vermelho); }
+    .tag.status-feito{ background:var(--verde-fundo); color:var(--verde); border-color:rgba(46,204,113,0.3); }
+    .tag.status-pendente{ background:var(--ambar-fundo); color:var(--ambar); border-color:rgba(245,166,35,0.3); }
+    .tag.status-atrasado{ background:var(--vermelho-fundo); color:var(--vermelho); border-color:rgba(235,77,75,0.3); }
 
-    .tag.fixa{ background:#ede9fe; color:#7c3aed; }
+    .tag.fixa{ background:var(--roxo-fundo); color:var(--roxo); border-color:rgba(157,126,232,0.3); }
 
     .acoes{
         display:flex;
@@ -291,27 +403,32 @@ BASE_STYLE = """
     }
 
     .acoes a{
-        padding:6px 10px;
-        border-radius:7px;
-        font-size:0.8rem;
+        padding:6px 11px;
+        border-radius:5px;
+        font-size:0.76rem;
         text-decoration:none;
         font-weight:600;
+        border:1px solid transparent;
     }
 
-    .acoes .concluir{ background:var(--verde-claro); color:var(--verde); }
-    .acoes .editar{ background:var(--azul-claro); color:var(--azul); }
-    .acoes .excluir{ background:var(--vermelho-claro); color:var(--vermelho); }
+    .acoes .concluir{ background:var(--verde-fundo); color:var(--verde); border-color:rgba(46,204,113,0.3); }
+    .acoes .editar{ background:var(--azul-fundo); color:var(--azul); border-color:rgba(79,163,209,0.3); }
+    .acoes .excluir{ background:var(--vermelho-fundo); color:var(--vermelho); border-color:rgba(235,77,75,0.3); }
 
     .vazio{
         text-align:center;
         color:var(--texto-suave);
-        padding:30px 0;
+        padding:34px 0;
+        font-family:var(--mono);
+        font-size:0.85rem;
+        border:1px dashed var(--borda);
+        border-radius:8px;
     }
 
     @media (max-width:700px){
         .dashboard{ grid-template-columns:repeat(2, 1fr); }
         .form-grid{ grid-template-columns:1fr; }
-        body{ padding:14px; }
+        body{ padding:16px; }
     }
 </style>
 """
@@ -329,26 +446,29 @@ PAGINA_INICIO = """
 <div class="container">
 
 <header>
-    <h1>📋 Controle de Rotinas</h1>
-    <p>Acompanhamento das rotinas do setor</p>
+    <span class="rebite tl"></span><span class="rebite tr"></span>
+    <span class="rebite bl"></span><span class="rebite br"></span>
+    <p class="eyebrow">Painel · PCP</p>
+    <h1>Controle de Rotinas</h1>
+    <p>Acompanhamento das rotinas por estação</p>
 </header>
 
 <section class="dashboard">
     <div class="card total">
+        <div class="rotulo">Total de rotinas</div>
         <div class="valor">{{ total }}</div>
-        <div class="rotulo">📊 Total de rotinas</div>
     </div>
     <div class="card concluidas">
+        <div class="rotulo">Concluídas</div>
         <div class="valor">{{ concluidas }}</div>
-        <div class="rotulo">✅ Concluídas</div>
     </div>
     <div class="card pendentes">
+        <div class="rotulo">Pendentes</div>
         <div class="valor">{{ pendentes }}</div>
-        <div class="rotulo">⏳ Pendentes</div>
     </div>
     <div class="card percentual">
+        <div class="rotulo">% Concluído</div>
         <div class="valor">{{ percentual }}%</div>
-        <div class="rotulo">📈 Percentual concluído</div>
         <div class="barra-progresso">
             <div class="preenchido" style="width:{{ percentual }}%;"></div>
         </div>
@@ -356,7 +476,8 @@ PAGINA_INICIO = """
 </section>
 
 <section class="form-card">
-    <h2>➕ Nova rotina</h2>
+    <div class="titulo-painel">+ Nova rotina</div>
+    <div class="corpo-form">
     <form method="POST" action="/criar">
         <div class="form-grid">
 <div class="campo">
@@ -398,18 +519,31 @@ PAGINA_INICIO = """
             </div>
         </div>
     </form>
+    </div>
 </section>
 
 <section class="lista">
-    <h2>Rotinas</h2>
+    <div class="titulo-lista">Rotinas</div>
 
     {% if not rotinas %}
         <div class="vazio">Nenhuma rotina cadastrada ainda.</div>
     {% endif %}
 
     {% for r in rotinas %}
-    <div class="rotina {% if r['status']=='Feito' %}feita{% endif %}">
+    {% if r['status']=='Feito' %}
+        {% set classe_status = 'status-feito' %}
+        {% set classe_luz = 'feito' %}
+    {% elif r['atrasada'] %}
+        {% set classe_status = 'status-atrasado' %}
+        {% set classe_luz = 'atrasado' %}
+    {% else %}
+        {% set classe_status = 'status-pendente' %}
+        {% set classe_luz = 'pendente' %}
+    {% endif %}
+    <div class="rotina {{ classe_status }}">
         <div class="info">
+            <span class="luz {{ classe_luz }}"></span>
+            <div>
             <div class="nome">{{ r['nome'] }}</div>
             <div class="meta">
                 <span class="tag setor">{{ r['setor'] }}</span>
@@ -420,18 +554,19 @@ PAGINA_INICIO = """
                 {% endif %}
 
                 {% if r['status']=='Feito' %}
-                    <span class="tag status-feito">✅ Feito</span>
+                    <span class="tag status-feito">Feito</span>
                 {% elif r['atrasada'] %}
-                    <span class="tag status-atrasado">🔴 Atrasada</span>
+                    <span class="tag status-atrasado">Atrasada</span>
                 {% else %}
-                    <span class="tag status-pendente">⏳ Pendente</span>
+                    <span class="tag status-pendente">Pendente</span>
                 {% endif %}
 
-                <span class="tag setor">🕒 criada em {{ r['data_criacao'] }}</span>
+                <span class="tag setor">criada em {{ r['data_criacao'] }}</span>
 
                 {% if r['prazo'] %}
-                <span class="tag setor">📅 prazo {{ r['prazo'] }}</span>
+                <span class="tag setor">prazo {{ r['prazo'] }}</span>
                 {% endif %}
+            </div>
             </div>
         </div>
         <div class="acoes">
@@ -463,11 +598,16 @@ PAGINA_EDITAR = """
 <div class="container">
 
 <header>
-    <h1>✎ Editar rotina</h1>
-    <p><a class="btn" style="background:var(--texto-suave);" href="/">← Voltar</a></p>
+    <span class="rebite tl"></span><span class="rebite tr"></span>
+    <span class="rebite bl"></span><span class="rebite br"></span>
+    <p class="eyebrow">Painel · PCP</p>
+    <h1>Editar rotina</h1>
+    <p><a class="btn" style="background:transparent;color:var(--texto-suave);border:1px solid var(--borda);" href="/">← Voltar</a></p>
 </header>
 
 <section class="form-card">
+    <div class="titulo-painel">Editar</div>
+    <div class="corpo-form">
     <form method="POST">
         <div class="campo" style="margin-bottom:12px;">
             <label>Rotina</label>
@@ -507,6 +647,7 @@ PAGINA_EDITAR = """
 
         <button type="submit">Salvar alterações</button>
     </form>
+    </div>
 </section>
 
 </div>
