@@ -562,7 +562,9 @@ PAGINA_INICIO = """
     {% endif %}
 
     {% if r['prazo'] %}
-        <span class="tag setor">📅 {{ r['prazo'] }}</span>
+       <span class="tag setor">
+    📅 {{ r['prazo'][8:10] }}/{{ r['prazo'][5:7] }}/{{ r['prazo'][0:4] }}
+</span>
     {% endif %}
 </div>
             </div>
