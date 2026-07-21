@@ -585,7 +585,7 @@ PAGINA_INICIO = """
 <footer style="
     margin-top: 40px;
     padding: 15px;
-    text-align: center;
+    text-align: right;
     color: #777;
     font-size: 13px;
 ">
