@@ -26,12 +26,34 @@ PRIORIDADES = ["Baixa", "Média", "Alta"]
 # Banco de dados
 # ---------------------------------------------------------------------------
 def get_conn():
-    conn = psycopg2.connect(
+    return psycopg2.connect(
         DATABASE_URL,
         cursor_factory=RealDictCursor
     )
-    return conn
 
+
+def registrar_historico(acao, descricao):
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    usuario_id = current_user.id if current_user.is_authenticated else None
+    usuario_nome = current_user.nome if current_user.is_authenticated else "Sistema"
+
+    cursor.execute("""
+        INSERT INTO historico_auditoria
+        (usuario_id, usuario_nome, acao, descricao)
+        VALUES (%s, %s, %s, %s)
+    """, (
+        usuario_id,
+        usuario_nome,
+        acao,
+        descricao
+    ))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
 
 def init_db():
     conn = get_conn()
@@ -53,21 +75,26 @@ def init_db():
     """)
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS controle_sistema (
-        chave TEXT PRIMARY KEY,
-        valor TEXT
+    CREATE TABLE IF NOT EXISTS historico_auditoria (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER,
+        usuario_nome TEXT NOT NULL,
+        acao TEXT NOT NULL,
+        descricao TEXT NOT NULL,
+        data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios (
-        id SERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        usuario TEXT UNIQUE NOT NULL,
-        senha_hash TEXT NOT NULL,
-        criado_em TEXT
-    )
-    """)
+CREATE TABLE IF NOT EXISTS usuarios (
+    id SERIAL PRIMARY KEY,
+    nome TEXT NOT NULL,
+    usuario TEXT UNIQUE NOT NULL,
+    senha_hash TEXT NOT NULL,
+    perfil TEXT DEFAULT 'usuario',
+    criado_em TEXT
+)
+""")
 
     conn.commit()
 
@@ -138,6 +165,7 @@ class Usuario(UserMixin):
         self.id = str(row["id"])
         self.nome = row["nome"]
         self.usuario = row["usuario"]
+        self.perfil = row["perfil"]
 
 
 @login_manager.user_loader
@@ -257,18 +285,19 @@ BASE_STYLE = """
     /* ---------- Dashboard: contadores de painel ---------- */
     .dashboard{
         display:grid;
-        grid-template-columns:repeat(4, 1fr);
+        grid-template-columns:repeat(5, 1fr);
         gap:14px;
         margin-bottom:26px;
     }
 
-    .card{
-        background:var(--painel);
-        border-radius:8px;
-        padding:16px 18px;
-        border:1px solid var(--borda);
-        border-top:2px solid var(--borda-forte);
-    }
+   .card{
+    background:var(--painel);
+    border-radius:8px;
+    padding:16px 18px;
+    min-height:120px;
+    border:1px solid var(--borda);
+    border-top:2px solid var(--borda-forte);
+}
 
     .card .rotulo{
         font-family:var(--mono);
@@ -290,25 +319,75 @@ BASE_STYLE = """
     .card.concluidas .valor{ color:var(--verde); }
     .card.pendentes .valor{ color:var(--ambar); }
     .card.percentual .valor{ color:var(--roxo); }
+    .card.atrasadas .valor{ color:var(--vermelho); }
 
-    .barra-progresso{
-        width:100%;
-        height:6px;
-        background:#0f1317;
-        border:1px solid var(--borda);
-        border-radius:4px;
-        overflow:hidden;
-        margin-top:10px;
+
+.barra-progresso{
+    width:100%;
+    height:12px;
+    background:#0b1220;
+    border-radius:10px;
+    overflow:hidden;
+    margin-top:14px;
+    box-shadow:
+        inset 0 0 5px rgba(0,0,0,.6),
+        0 2px 8px rgba(0,0,0,.25);
+}
+
+.barra-progresso .preenchido{
+    height:100%;
+    width:0%;
+    background:linear-gradient(
+        90deg,
+        #6d28d9,
+        #8b5cf6,
+        #c084fc
+    );
+
+    border-radius:10px;
+
+    transition:
+        width .6s ease;
+
+    position:relative;
+    overflow:hidden;
+
+    box-shadow:
+        0 0 10px rgba(139,92,246,.7);
+}
+
+
+/* efeito de luz passando */
+.barra-progresso .preenchido::after{
+    content:"";
+    position:absolute;
+    top:0;
+    left:-50%;
+    width:40%;
+    height:100%;
+
+    background:linear-gradient(
+        120deg,
+        transparent,
+        rgba(255,255,255,.35),
+        transparent
+    );
+
+    animation: brilho 2.5s infinite;
+}
+
+
+@keyframes brilho{
+
+    0%{
+        left:-50%;
     }
 
-    .barra-progresso .preenchido{
-        height:100%;
-        background:repeating-linear-gradient(
-            135deg,
-            var(--roxo) 0px, var(--roxo) 6px,
-            #8064c9 6px, #8064c9 12px
-        );
+    100%{
+        left:120%;
     }
+}
+
 
     /* ---------- Formulário: "ordem de serviço" ---------- */
     .form-card{
@@ -689,11 +768,31 @@ PAGINA_INICIO = """
             <p>Acompanhamento das rotinas por estação</p>
         </div>
         <div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
-            <div style="margin-bottom:6px;">👤 {{ current_user.nome }}</div>
-            <a href="/trocar-senha" style="color:var(--texto-suave); font-size:0.78rem; margin-right:8px;">Trocar senha</a>
-            <a class="btn" style="background:transparent;color:var(--texto-suave);border:1px solid var(--borda); padding:6px 12px; font-size:0.78rem;" href="/logout">Sair</a>
-        </div>
+            <div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
+
+    <div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
+
+    <div style="margin-bottom:6px;">
+        👤 {{ current_user.nome }}
     </div>
+
+    <div style="margin-bottom:6px;">
+        🔑 {{ current_user.perfil }}
+    </div>
+
+    <a href="/trocar-senha" 
+       style="color:var(--texto-suave); font-size:0.78rem; margin-right:8px;">
+        Trocar senha
+    </a>
+
+    <a class="btn" 
+       style="background:transparent;color:var(--texto-suave);border:1px solid var(--borda); padding:6px 12px; font-size:0.78rem;" 
+       href="/logout">
+        Sair
+    </a>
+
+</div>
+            </div>
 </header>
 
 <section class="dashboard">
@@ -701,20 +800,28 @@ PAGINA_INICIO = """
         <div class="rotulo">Total de rotinas</div>
         <div class="valor">{{ total }}</div>
     </div>
+
     <div class="card concluidas">
         <div class="rotulo">Concluídas</div>
         <div class="valor">{{ concluidas }}</div>
     </div>
+
     <div class="card pendentes">
         <div class="rotulo">Pendentes</div>
         <div class="valor">{{ pendentes }}</div>
     </div>
+
+    <div class="card atrasadas">
+        <div class="rotulo">Atrasadas</div>
+        <div class="valor">{{ atrasadas }}</div>
+    </div>
+
     <div class="card percentual">
         <div class="rotulo">% Concluído</div>
         <div class="valor">{{ percentual }}%</div>
         <div class="barra-progresso">
-            <div class="preenchido" style="width:{{ percentual }}%;"></div>
-        </div>
+    <div class="preenchido" style="width:{{ percentual }}%;"></div>
+</div>
     </div>
 </section>
 
@@ -821,7 +928,12 @@ PAGINA_INICIO = """
             <span class="luz {{ classe_luz }}"></span>
             <div>
             <div class="nome">{{ r['nome'] }}</div>
-            <div class="meta">
+
+<div style="font-size:0.75rem; color:var(--texto-suave); margin-top:4px;">
+    👤 Criado por: {{ r['criador_nome'] }}
+</div>
+
+<div class="meta">
     <span class="tag setor">{{ r['setor'] }}</span>
     <span class="tag prioridade-{{ r['prioridade']|lower }}">{{ r['prioridade'] }}</span>
 
@@ -866,7 +978,7 @@ PAGINA_INICIO = """
     font-size: 13px;
 ">
     <hr>
-    Controle de Rotinas v1.0<br>
+    Controle de Rotinas v2.0<br>
     Desenvolvido por Valdeir Vaz<br>
     2026
     <hr>
@@ -1156,6 +1268,9 @@ def trocar_senha():
 @login_required
 def inicio():
 
+    print("NOME:", current_user.nome)
+    print("PERFIL:", current_user.perfil)
+
     verificar_virada_dia()
 
     filtro_setor = request.args.get("setor", "")
@@ -1165,10 +1280,36 @@ def inicio():
     conn = get_conn()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT * FROM rotinas WHERE usuario_id=%s ORDER BY id DESC",
-        (current_user.id,)
-    )
+    if current_user.perfil == "administrador":
+
+        cursor.execute(
+            """
+            SELECT 
+                rotinas.*,
+                usuarios.nome AS criador_nome
+            FROM rotinas
+            LEFT JOIN usuarios
+                ON usuarios.id = rotinas.usuario_id
+            ORDER BY rotinas.id DESC
+            """
+        )
+
+    else:
+
+        cursor.execute(
+            """
+            SELECT 
+                rotinas.*,
+                usuarios.nome AS criador_nome
+            FROM rotinas
+            LEFT JOIN usuarios
+                ON usuarios.id = rotinas.usuario_id
+            WHERE rotinas.usuario_id=%s
+            ORDER BY rotinas.id DESC
+            """,
+            (current_user.id,)
+        )
+
     dados = cursor.fetchall()
 
     conn.close()
@@ -1192,6 +1333,7 @@ def inicio():
     total = len(rotinas)
     concluidas = sum(1 for r in rotinas if r["status"] == "Feito")
     pendentes = total - concluidas
+    atrasadas = sum(1 for r in rotinas if r["atrasada"])
 
     percentual = round((concluidas / total) * 100) if total else 0
 
@@ -1218,6 +1360,7 @@ def inicio():
         concluidas=concluidas,
         pendentes=pendentes,
         percentual=percentual,
+        atrasadas=atrasadas,
         setores=SETORES,
         prioridades=PRIORIDADES,
         filtro_setor=filtro_setor,
@@ -1267,6 +1410,10 @@ def criar():
         )
 
         conn.commit()
+        registrar_historico(
+    "Criou",
+    f"Criou a rotina: {nome}"
+)
         conn.close()
 
 
@@ -1281,55 +1428,26 @@ def editar(id):
     conn = get_conn()
     cursor = conn.cursor()
 
-
-    if request.method == "POST":
-
-        nome = request.form["nome"].strip()
-        setor = request.form.get("setor", SETORES[0])
-        prioridade = request.form.get("prioridade", "Média")
-        prazo = request.form.get("prazo") or None
-        fixa = request.form.get("fixa", "Não")
-
+    if current_user.perfil == "administrador":
 
         cursor.execute(
-            """
-            UPDATE rotinas
-            SET nome=%s, setor=%s, prioridade=%s, prazo=%s, fixa=%s
-            WHERE id=%s AND usuario_id=%s
-            """,
-
-            (
-                nome,
-                setor,
-                prioridade,
-                prazo,
-                fixa,
-                id,
-                current_user.id
-            )
+            "SELECT * FROM rotinas WHERE id=%s",
+            (id,)
         )
 
+    else:
 
-        conn.commit()
-        conn.close()
-
-        return redirect("/")
-
-
-
-    cursor.execute(
-        "SELECT * FROM rotinas WHERE id=%s AND usuario_id=%s",
-        (id, current_user.id)
-    )
+        cursor.execute(
+            "SELECT * FROM rotinas WHERE id=%s AND usuario_id=%s",
+            (id, current_user.id)
+        )
 
     r = cursor.fetchone()
 
     conn.close()
 
-
     if r is None:
         return redirect("/")
-
 
     return render_template_string(
         PAGINA_EDITAR,
@@ -1337,7 +1455,6 @@ def editar(id):
         setores=SETORES,
         prioridades=PRIORIDADES
     )
-
 
 
 @app.route("/excluir/<int:id>")
@@ -1348,10 +1465,19 @@ def excluir(id):
     cursor = conn.cursor()
 
 
-    cursor.execute(
-        "DELETE FROM rotinas WHERE id=%s AND usuario_id=%s",
-        (id, current_user.id)
-    )
+    if current_user.perfil == "administrador":
+
+        cursor.execute(
+            "DELETE FROM rotinas WHERE id=%s",
+            (id,)
+        )
+
+    else:
+
+        cursor.execute(
+            "DELETE FROM rotinas WHERE id=%s AND usuario_id=%s",
+            (id, current_user.id)
+        )
 
 
     conn.commit()
