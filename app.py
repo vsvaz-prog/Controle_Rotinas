@@ -1,11 +1,21 @@
-from flask import Flask, render_template_string, request, redirect
+from flask import Flask, render_template_string, request, redirect, url_for
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date
 from apscheduler.schedulers.background import BackgroundScheduler   # ← ADICIONA ESSA LINHA
+from flask_login import (
+    LoginManager, UserMixin, login_user, logout_user,
+    login_required, current_user
+)
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "troque-esta-chave-em-producao")
+
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Faça login para acessar o Controle de Rotinas."
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 SETORES = ["PCP", "Produção", "Qualidade", "Desossa", "Miudos", "Expedição", "Compras", "RH", "Financeiro","Outros "]
@@ -49,6 +59,16 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        usuario TEXT UNIQUE NOT NULL,
+        senha_hash TEXT NOT NULL,
+        criado_em TEXT
+    )
+    """)
+
     conn.commit()
 
     try:
@@ -67,15 +87,68 @@ def init_db():
         ADD COLUMN IF NOT EXISTS ultima_geracao TEXT DEFAULT ''
         """)
 
+        cursor.execute("""
+        ALTER TABLE rotinas
+        ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id)
+        """)
+
+        cursor.execute("""
+        ALTER TABLE usuarios
+        ADD COLUMN IF NOT EXISTS usuario TEXT
+        """)
+
         conn.commit()
 
     except Exception as e:
         print("Erro ao alterar tabela:", e)
 
+    # Garante a constraint UNIQUE em usuarios.usuario (separado porque
+    # ADD CONSTRAINT não tem IF NOT EXISTS no Postgres)
+    try:
+        cursor.execute("""
+        ALTER TABLE usuarios
+        ADD CONSTRAINT usuarios_usuario_key UNIQUE (usuario)
+        """)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+
+    # Coluna "email" é da versão antiga e não é mais usada — remove a
+    # obrigatoriedade dela para não travar novos cadastros
+    try:
+        cursor.execute("""
+        ALTER TABLE usuarios
+        ALTER COLUMN email DROP NOT NULL
+        """)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+
     conn.close()
 
 
 init_db()
+
+
+# ---------------------------------------------------------------------------
+# Autenticação
+# ---------------------------------------------------------------------------
+class Usuario(UserMixin):
+    def __init__(self, row):
+        self.id = str(row["id"])
+        self.nome = row["nome"]
+        self.usuario = row["usuario"]
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM usuarios WHERE id=%s", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return Usuario(row) if row else None
+
 
 # ---------------------------------------------------------------------------
 # Templates
@@ -433,6 +506,167 @@ BASE_STYLE = """
 </style>
 """
 
+PAGINA_LOGIN = """
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrar · Controle de Rotinas</title>
+""" + BASE_STYLE + """
+</head>
+<body>
+<div class="container" style="max-width:420px;">
+
+<header>
+    <span class="rebite tl"></span><span class="rebite tr"></span>
+    <span class="rebite bl"></span><span class="rebite br"></span>
+    <p class="eyebrow">Painel · PCP</p>
+    <h1>Entrar</h1>
+    <p>Acesse seu painel de rotinas</p>
+</header>
+
+{% if erro %}
+<div class="vazio" style="border-color:var(--vermelho); color:var(--vermelho); margin-bottom:16px;">{{ erro }}</div>
+{% endif %}
+
+<section class="form-card">
+    <div class="titulo-painel">Login</div>
+    <div class="corpo-form">
+    <form method="POST">
+        <div class="campo" style="margin-bottom:12px;">
+            <label>Usuário</label>
+            <input name="usuario" required autofocus>
+        </div>
+        <div class="campo" style="margin-bottom:16px;">
+            <label>Senha</label>
+            <input type="password" name="senha" required>
+        </div>
+        <button type="submit" style="width:100%;">Entrar</button>
+    </form>
+    </div>
+</section>
+
+<p style="text-align:center; color:var(--texto-suave); font-size:0.85rem;">
+    Ainda não tem conta? <a href="/registrar" style="color:var(--ambar);">Criar conta</a>
+</p>
+
+</div>
+</body>
+</html>
+"""
+
+PAGINA_REGISTRAR = """
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Criar conta · Controle de Rotinas</title>
+""" + BASE_STYLE + """
+</head>
+<body>
+<div class="container" style="max-width:420px;">
+
+<header>
+    <span class="rebite tl"></span><span class="rebite tr"></span>
+    <span class="rebite bl"></span><span class="rebite br"></span>
+    <p class="eyebrow">Painel · PCP</p>
+    <h1>Criar conta</h1>
+    <p>Cada membro da equipe tem seu próprio painel</p>
+</header>
+
+{% if erro %}
+<div class="vazio" style="border-color:var(--vermelho); color:var(--vermelho); margin-bottom:16px;">{{ erro }}</div>
+{% endif %}
+
+<section class="form-card">
+    <div class="titulo-painel">Cadastro</div>
+    <div class="corpo-form">
+    <form method="POST">
+        <div class="campo" style="margin-bottom:12px;">
+            <label>Nome</label>
+            <input name="nome" required autofocus>
+        </div>
+        <div class="campo" style="margin-bottom:12px;">
+            <label>Usuário</label>
+            <input name="usuario" required>
+        </div>
+        <div class="campo" style="margin-bottom:16px;">
+            <label>Senha</label>
+            <input type="password" name="senha" minlength="6" required>
+        </div>
+        <div class="campo" style="margin-bottom:16px;">
+            <label>Código de convite</label>
+            <input name="codigo_convite" required>
+        </div>
+        <button type="submit" style="width:100%;">Criar conta</button>
+    </form>
+    </div>
+</section>
+
+<p style="text-align:center; color:var(--texto-suave); font-size:0.85rem;">
+    Já tem conta? <a href="/login" style="color:var(--ambar);">Entrar</a>
+</p>
+
+</div>
+</body>
+</html>
+"""
+
+PAGINA_TROCAR_SENHA = """
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trocar senha · Controle de Rotinas</title>
+""" + BASE_STYLE + """
+</head>
+<body>
+<div class="container" style="max-width:420px;">
+
+<header>
+    <span class="rebite tl"></span><span class="rebite tr"></span>
+    <span class="rebite bl"></span><span class="rebite br"></span>
+    <p class="eyebrow">Painel · PCP</p>
+    <h1>Trocar senha</h1>
+    <p><a class="btn" style="background:transparent;color:var(--texto-suave);border:1px solid var(--borda);" href="/">← Voltar</a></p>
+</header>
+
+{% if erro %}
+<div class="vazio" style="border-color:var(--vermelho); color:var(--vermelho); margin-bottom:16px;">{{ erro }}</div>
+{% endif %}
+{% if sucesso %}
+<div class="vazio" style="border-color:var(--verde); color:var(--verde); margin-bottom:16px;">{{ sucesso }}</div>
+{% endif %}
+
+<section class="form-card">
+    <div class="titulo-painel">Alterar senha</div>
+    <div class="corpo-form">
+    <form method="POST">
+        <div class="campo" style="margin-bottom:12px;">
+            <label>Senha atual</label>
+            <input type="password" name="senha_atual" required autofocus>
+        </div>
+        <div class="campo" style="margin-bottom:12px;">
+            <label>Nova senha</label>
+            <input type="password" name="senha_nova" minlength="6" required>
+        </div>
+        <div class="campo" style="margin-bottom:16px;">
+            <label>Confirmar nova senha</label>
+            <input type="password" name="senha_confirma" minlength="6" required>
+        </div>
+        <button type="submit" style="width:100%;">Salvar nova senha</button>
+    </form>
+    </div>
+</section>
+
+</div>
+</body>
+</html>
+"""
+
 PAGINA_INICIO = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -448,9 +682,18 @@ PAGINA_INICIO = """
 <header>
     <span class="rebite tl"></span><span class="rebite tr"></span>
     <span class="rebite bl"></span><span class="rebite br"></span>
-    <p class="eyebrow">Painel · PCP</p>
-    <h1>Controle de Rotinas</h1>
-    <p>Acompanhamento das rotinas por estação</p>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+        <div>
+            <p class="eyebrow">Painel · PCP</p>
+            <h1>Controle de Rotinas</h1>
+            <p>Acompanhamento das rotinas por estação</p>
+        </div>
+        <div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
+            <div style="margin-bottom:6px;">👤 {{ current_user.nome }}</div>
+            <a href="/trocar-senha" style="color:var(--texto-suave); font-size:0.78rem; margin-right:8px;">Trocar senha</a>
+            <a class="btn" style="background:transparent;color:var(--texto-suave);border:1px solid var(--borda); padding:6px 12px; font-size:0.78rem;" href="/logout">Sair</a>
+        </div>
+    </div>
 </header>
 
 <section class="dashboard">
@@ -525,8 +768,41 @@ PAGINA_INICIO = """
 <section class="lista">
     <div class="titulo-lista">Rotinas</div>
 
+    <form method="GET" action="/" class="form-grid" style="margin-bottom:16px; align-items:end;">
+        <div class="campo">
+            <label>Setor</label>
+            <select name="setor" onchange="this.form.submit()">
+                <option value="">Todos</option>
+                {% for s in setores %}
+                <option value="{{ s }}" {% if s==filtro_setor %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="campo">
+            <label>Prioridade</label>
+            <select name="prioridade" onchange="this.form.submit()">
+                <option value="">Todas</option>
+                {% for p in prioridades %}
+                <option value="{{ p }}" {% if p==filtro_prioridade %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="campo">
+            <label>Status</label>
+            <select name="status" onchange="this.form.submit()">
+                <option value="">Todos</option>
+                <option value="pendente" {% if filtro_status=='pendente' %}selected{% endif %}>Pendente</option>
+                <option value="feito" {% if filtro_status=='feito' %}selected{% endif %}>Feito</option>
+                <option value="atrasada" {% if filtro_status=='atrasada' %}selected{% endif %}>Atrasada</option>
+            </select>
+        </div>
+        <div class="campo">
+            <a class="btn" style="background:transparent;color:var(--texto-suave);border:1px solid var(--borda); display:block;" href="/">Limpar filtros</a>
+        </div>
+    </form>
+
     {% if not rotinas %}
-        <div class="vazio">Nenhuma rotina cadastrada ainda.</div>
+        <div class="vazio">Nenhuma rotina encontrada.</div>
     {% endif %}
 
     {% for r in rotinas %}
@@ -752,18 +1028,147 @@ def iniciar_agendador():
 iniciar_agendador()
 
 # ---------------------------------------------------------------------------
+# Rotas de autenticação
+# ---------------------------------------------------------------------------
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect("/")
+
+    erro = None
+
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip().lower()
+        senha = request.form.get("senha", "")
+
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM usuarios WHERE usuario=%s", (usuario,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row and check_password_hash(row["senha_hash"], senha):
+            login_user(Usuario(row))
+            return redirect("/")
+
+        erro = "Usuário ou senha inválidos."
+
+    return render_template_string(PAGINA_LOGIN, erro=erro)
+
+
+@app.route("/registrar", methods=["GET", "POST"])
+def registrar():
+    if current_user.is_authenticated:
+        return redirect("/")
+
+    erro = None
+
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        usuario = request.form.get("usuario", "").strip().lower()
+        senha = request.form.get("senha", "")
+        codigo = request.form.get("codigo_convite", "").strip()
+
+        codigo_esperado = os.environ.get("CODIGO_CONVITE", "")
+
+        if not nome or not usuario or len(senha) < 6:
+            erro = "Preencha nome, usuário e uma senha com pelo menos 6 caracteres."
+        elif not codigo_esperado:
+            erro = "Cadastro desativado: código de convite não configurado no servidor."
+        elif codigo != codigo_esperado:
+            erro = "Código de convite inválido."
+        else:
+            conn = get_conn()
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT id FROM usuarios WHERE usuario=%s", (usuario,))
+            if cursor.fetchone():
+                erro = "Já existe uma conta com este usuário."
+                conn.close()
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO usuarios (nome, usuario, senha_hash, criado_em)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING *
+                    """,
+                    (nome, usuario, generate_password_hash(senha),
+                     datetime.now().strftime("%d/%m/%Y %H:%M"))
+                )
+                row = cursor.fetchone()
+                conn.commit()
+                conn.close()
+
+                login_user(Usuario(row))
+                return redirect("/")
+
+    return render_template_string(PAGINA_REGISTRAR, erro=erro)
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect("/login")
+
+
+@app.route("/trocar-senha", methods=["GET", "POST"])
+@login_required
+def trocar_senha():
+    erro = None
+    sucesso = None
+
+    if request.method == "POST":
+        senha_atual = request.form.get("senha_atual", "")
+        senha_nova = request.form.get("senha_nova", "")
+        senha_confirma = request.form.get("senha_confirma", "")
+
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM usuarios WHERE id=%s", (current_user.id,))
+        row = cursor.fetchone()
+
+        if not row or not check_password_hash(row["senha_hash"], senha_atual):
+            erro = "Senha atual incorreta."
+        elif len(senha_nova) < 6:
+            erro = "A nova senha precisa ter pelo menos 6 caracteres."
+        elif senha_nova != senha_confirma:
+            erro = "As senhas não coincidem."
+        else:
+            cursor.execute(
+                "UPDATE usuarios SET senha_hash=%s WHERE id=%s",
+                (generate_password_hash(senha_nova), current_user.id)
+            )
+            conn.commit()
+            sucesso = "Senha alterada com sucesso."
+
+        conn.close()
+
+    return render_template_string(PAGINA_TROCAR_SENHA, erro=erro, sucesso=sucesso)
+
+
+# ---------------------------------------------------------------------------
 # Rotas
 # ---------------------------------------------------------------------------
 
 @app.route("/")
+@login_required
 def inicio():
 
     verificar_virada_dia()
 
+    filtro_setor = request.args.get("setor", "")
+    filtro_prioridade = request.args.get("prioridade", "")
+    filtro_status = request.args.get("status", "")
+
     conn = get_conn()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM rotinas ORDER BY id DESC")
+    cursor.execute(
+        "SELECT * FROM rotinas WHERE usuario_id=%s ORDER BY id DESC",
+        (current_user.id,)
+    )
     dados = cursor.fetchall()
 
     conn.close()
@@ -790,20 +1195,39 @@ def inicio():
 
     percentual = round((concluidas / total) * 100) if total else 0
 
+    rotinas_exibidas = rotinas
+
+    if filtro_setor:
+        rotinas_exibidas = [r for r in rotinas_exibidas if r["setor"] == filtro_setor]
+
+    if filtro_prioridade:
+        rotinas_exibidas = [r for r in rotinas_exibidas if r["prioridade"] == filtro_prioridade]
+
+    if filtro_status == "feito":
+        rotinas_exibidas = [r for r in rotinas_exibidas if r["status"] == "Feito"]
+    elif filtro_status == "atrasada":
+        rotinas_exibidas = [r for r in rotinas_exibidas if r["atrasada"]]
+    elif filtro_status == "pendente":
+        rotinas_exibidas = [r for r in rotinas_exibidas if r["status"] == "Pendente" and not r["atrasada"]]
+
 
     return render_template_string(
         PAGINA_INICIO,
-        rotinas=rotinas,
+        rotinas=rotinas_exibidas,
         total=total,
         concluidas=concluidas,
         pendentes=pendentes,
         percentual=percentual,
         setores=SETORES,
         prioridades=PRIORIDADES,
+        filtro_setor=filtro_setor,
+        filtro_prioridade=filtro_prioridade,
+        filtro_status=filtro_status,
     )
 
 
 @app.route("/criar", methods=["POST"])
+@login_required
 def criar():
 
     nome = request.form["nome"].strip()
@@ -823,9 +1247,9 @@ def criar():
         cursor.execute(
             """
             INSERT INTO rotinas
-            (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao)
+            (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao, usuario_id)
 
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
 
             (
@@ -837,7 +1261,8 @@ def criar():
                 prazo,
                 fixa,
                 "Diária" if fixa == "Sim" else "",
-                ""
+                "",
+                current_user.id
             )
         )
 
@@ -850,6 +1275,7 @@ def criar():
 
 
 @app.route("/editar/<int:id>", methods=["GET", "POST"])
+@login_required
 def editar(id):
 
     conn = get_conn()
@@ -869,7 +1295,7 @@ def editar(id):
             """
             UPDATE rotinas
             SET nome=%s, setor=%s, prioridade=%s, prazo=%s, fixa=%s
-            WHERE id=%s
+            WHERE id=%s AND usuario_id=%s
             """,
 
             (
@@ -878,7 +1304,8 @@ def editar(id):
                 prioridade,
                 prazo,
                 fixa,
-                id
+                id,
+                current_user.id
             )
         )
 
@@ -891,8 +1318,8 @@ def editar(id):
 
 
     cursor.execute(
-        "SELECT * FROM rotinas WHERE id=%s",
-        (id,)
+        "SELECT * FROM rotinas WHERE id=%s AND usuario_id=%s",
+        (id, current_user.id)
     )
 
     r = cursor.fetchone()
@@ -914,6 +1341,7 @@ def editar(id):
 
 
 @app.route("/excluir/<int:id>")
+@login_required
 def excluir(id):
 
     conn = get_conn()
@@ -921,8 +1349,8 @@ def excluir(id):
 
 
     cursor.execute(
-        "DELETE FROM rotinas WHERE id=%s",
-        (id,)
+        "DELETE FROM rotinas WHERE id=%s AND usuario_id=%s",
+        (id, current_user.id)
     )
 
 
@@ -935,6 +1363,7 @@ def excluir(id):
 
 
 @app.route("/concluir/<int:id>")
+@login_required
 def concluir(id):
 
     conn = get_conn()
@@ -942,8 +1371,8 @@ def concluir(id):
 
 
     cursor.execute(
-        "SELECT status FROM rotinas WHERE id=%s",
-        (id,)
+        "SELECT status FROM rotinas WHERE id=%s AND usuario_id=%s",
+        (id, current_user.id)
     )
 
 
@@ -959,9 +1388,9 @@ def concluir(id):
             """
             UPDATE rotinas
             SET status=%s
-            WHERE id=%s
+            WHERE id=%s AND usuario_id=%s
             """,
-            (novo,id)
+            (novo, id, current_user.id)
         )
 
 

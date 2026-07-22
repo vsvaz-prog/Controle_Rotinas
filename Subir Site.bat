@@ -28,6 +28,7 @@ if errorlevel 1 (
     echo Erro ao enviar para o GitHub.
     pause
     exit
+
 )
 
 echo.
