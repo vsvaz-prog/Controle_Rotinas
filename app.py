@@ -5,7 +5,7 @@ import locale
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -13,6 +13,7 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
+
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -1364,7 +1365,12 @@ def inicio():
         rotinas_exibidas = [r for r in rotinas_exibidas if r["status"] == "Pendente" and not r["atrasada"]]
 
     # Saudação
-    hora = datetime.now().hour
+    hora_brasil = datetime.now(timezone(timedelta(hours=-3)))
+
+    hora = hora_brasil.hour
+
+    print("HORARIO BRASIL:", hora_brasil)
+    print("HORA NUMERO:", hora)
 
     if hora < 12:
         saudacao = "Bom dia"
