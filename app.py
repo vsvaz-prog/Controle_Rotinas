@@ -1,9 +1,14 @@
 from flask import Flask, render_template_string, request, redirect, url_for
 import os
+import locale
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
+
 from datetime import datetime, date
-from apscheduler.schedulers.background import BackgroundScheduler   # ← ADICIONA ESSA LINHA
+
+from apscheduler.schedulers.background import BackgroundScheduler
+
 from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
@@ -767,10 +772,16 @@ PAGINA_INICIO = """
             <h1>Controle de Rotinas</h1>
             <p>Acompanhamento das rotinas por estação</p>
         </div>
-        <div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
-            <div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
+       
+<div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
 
-    <div style="text-align:right; font-size:0.8rem; color:var(--texto-suave);">
+    <div style="margin-bottom:6px; font-size:1rem;">
+        🌞 {{ saudacao }}, {{ current_user.nome }}
+    </div>
+
+    <div style="margin-bottom:6px;">
+        📅 {{ data_atual }}
+    </div>
 
     <div style="margin-bottom:6px;">
         👤 {{ current_user.nome }}
@@ -1352,6 +1363,27 @@ def inicio():
     elif filtro_status == "pendente":
         rotinas_exibidas = [r for r in rotinas_exibidas if r["status"] == "Pendente" and not r["atrasada"]]
 
+    # Saudação
+    hora = datetime.now().hour
+
+    if hora < 12:
+        saudacao = "Bom dia"
+    elif hora < 18:
+        saudacao = "Boa tarde"
+    else:
+        saudacao = "Boa noite"
+
+
+    # Data em português
+    try:
+        locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
+    except:
+        try:
+            locale.setlocale(locale.LC_TIME, "Portuguese_Brazil.1252")
+        except:
+            pass
+
+    data_atual = datetime.now().strftime("%A, %d de %B de %Y").capitalize()
 
     return render_template_string(
         PAGINA_INICIO,
@@ -1366,6 +1398,8 @@ def inicio():
         filtro_setor=filtro_setor,
         filtro_prioridade=filtro_prioridade,
         filtro_status=filtro_status,
+        saudacao=saudacao,
+        data_atual=data_atual,
     )
 
 
