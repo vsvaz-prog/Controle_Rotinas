@@ -130,6 +130,17 @@ CREATE TABLE IF NOT EXISTS usuarios (
         ADD COLUMN IF NOT EXISTS usuario TEXT
         """)
 
+        cursor.execute("""
+        ALTER TABLE rotinas
+        ADD COLUMN IF NOT EXISTS ordem INTEGER
+        """)
+
+        # Rotinas que ainda não têm ordem definida (registros antigos ou
+        # recém-criados) recebem o próprio id como ordem inicial
+        cursor.execute("""
+        UPDATE rotinas SET ordem = id WHERE ordem IS NULL
+        """)
+
         conn.commit()
 
     except Exception as e:
@@ -501,6 +512,18 @@ BASE_STYLE = """
     .rotina.status-atrasado{ border-left-color:var(--vermelho); }
 
     .rotina .info{ flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px; }
+
+    .alca-arrastar{
+        cursor:grab;
+        color:var(--texto-suave);
+        font-size:1.1rem;
+        line-height:1;
+        padding:2px 2px;
+        touch-action:none;
+        user-select:none;
+    }
+    .alca-arrastar:active{ cursor:grabbing; }
+    .rotina.arrastando{ opacity:0.5; }
 
     /* luz estilo andon */
     .luz{
@@ -924,6 +947,13 @@ PAGINA_INICIO = """
         <div class="vazio">Nenhuma rotina encontrada.</div>
     {% endif %}
 
+    {% if filtro_setor or filtro_prioridade or filtro_status %}
+    <div style="font-size:0.78rem; color:var(--texto-suave); margin-bottom:10px;">
+        ℹ️ Limpe os filtros para poder reordenar as rotinas arrastando.
+    </div>
+    {% endif %}
+
+    <div id="lista-rotinas" {% if filtro_setor or filtro_prioridade or filtro_status %}data-bloqueado="1"{% endif %}>
     {% for r in rotinas %}
     {% if r['status']=='Feito' %}
         {% set classe_status = 'status-feito' %}
@@ -935,8 +965,9 @@ PAGINA_INICIO = """
         {% set classe_status = 'status-pendente' %}
         {% set classe_luz = 'pendente' %}
     {% endif %}
-    <div class="rotina {{ classe_status }}">
+    <div class="rotina {{ classe_status }}" data-id="{{ r['id'] }}">
         <div class="info">
+            <span class="alca-arrastar" title="Arrastar para reordenar">⠿</span>
             <span class="luz {{ classe_luz }}"></span>
             <div>
             <div class="nome">{{ r['nome'] }}</div>
@@ -978,7 +1009,34 @@ PAGINA_INICIO = """
         </div>
     </div>
     {% endfor %}
+    </div>
 </section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script>
+(function () {
+    var lista = document.getElementById("lista-rotinas");
+    if (!lista || lista.dataset.bloqueado === "1") return;
+
+    new Sortable(lista, {
+        handle: ".alca-arrastar",
+        animation: 150,
+        ghostClass: "arrastando",
+        onEnd: function () {
+            var ids = Array.prototype.map.call(
+                lista.querySelectorAll(".rotina"),
+                function (el) { return parseInt(el.dataset.id, 10); }
+            );
+
+            fetch("/reordenar", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids: ids })
+            });
+        }
+    });
+})();
+</script>
 
 </div>
 <!-- RODAPÉ - CONTROLE DE ROTINAS -->
@@ -990,7 +1048,7 @@ PAGINA_INICIO = """
     font-size: 13px;
 ">
     <hr>
-    Controle de Rotinas v2.0<br>
+    Controle de Rotinas v2.1<br>
     Desenvolvido por Valdeir Vaz<br>
     2026
     <hr>
@@ -1302,7 +1360,7 @@ def inicio():
             FROM rotinas
             LEFT JOIN usuarios
                 ON usuarios.id = rotinas.usuario_id
-            ORDER BY rotinas.id DESC
+            ORDER BY rotinas.ordem ASC NULLS LAST, rotinas.id DESC
             """
         )
 
@@ -1317,7 +1375,7 @@ def inicio():
             LEFT JOIN usuarios
                 ON usuarios.id = rotinas.usuario_id
             WHERE rotinas.usuario_id=%s
-            ORDER BY rotinas.id DESC
+            ORDER BY rotinas.ordem ASC NULLS LAST, rotinas.id DESC
             """,
             (current_user.id,)
         )
@@ -1451,12 +1509,18 @@ def criar():
         conn = get_conn()
         cursor = conn.cursor()
 
+        # Nova rotina nasce no topo da lista: pega a menor ordem existente
+        # e coloca a nova rotina um passo à frente dela
+        cursor.execute("SELECT MIN(ordem) AS menor FROM rotinas")
+        menor_ordem = cursor.fetchone()["menor"]
+        nova_ordem = (menor_ordem - 1) if menor_ordem is not None else 0
+
         cursor.execute(
             """
             INSERT INTO rotinas
-            (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao, usuario_id)
+            (nome, setor, prioridade, status, data_criacao, prazo, fixa, frequencia, ultima_geracao, usuario_id, ordem)
 
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
 
             (
@@ -1469,7 +1533,8 @@ def criar():
                 fixa,
                 "Diária" if fixa == "Sim" else "",
                 "",
-                current_user.id
+                current_user.id,
+                nova_ordem
             )
         )
 
@@ -1483,6 +1548,36 @@ def criar():
 
     return redirect("/")
 
+
+
+@app.route("/reordenar", methods=["POST"])
+@login_required
+def reordenar():
+    dados = request.get_json(silent=True) or {}
+    ids = dados.get("ids", [])
+
+    if not ids:
+        return {"ok": False}, 400
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    for posicao, rotina_id in enumerate(ids):
+        if current_user.perfil == "administrador":
+            cursor.execute(
+                "UPDATE rotinas SET ordem=%s WHERE id=%s",
+                (posicao, rotina_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE rotinas SET ordem=%s WHERE id=%s AND usuario_id=%s",
+                (posicao, rotina_id, current_user.id)
+            )
+
+    conn.commit()
+    conn.close()
+
+    return {"ok": True}
 
 
 @app.route("/editar/<int:id>", methods=["GET", "POST"])
