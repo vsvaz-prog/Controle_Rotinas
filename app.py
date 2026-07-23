@@ -1374,16 +1374,40 @@ def inicio():
         saudacao = "Boa noite"
 
 
-    # Data em português
-    try:
-        locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
-    except:
-        try:
-            locale.setlocale(locale.LC_TIME, "Portuguese_Brazil.1252")
-        except:
-            pass
+    # Data em português (funciona no PC e no site)
+    dias = [
+        "segunda-feira",
+        "terça-feira",
+        "quarta-feira",
+        "quinta-feira",
+        "sexta-feira",
+        "sábado",
+        "domingo"
+    ]
 
-    data_atual = datetime.now().strftime("%A, %d de %B de %Y").capitalize()
+    meses = [
+        "janeiro",
+        "fevereiro",
+        "março",
+        "abril",
+        "maio",
+        "junho",
+        "julho",
+        "agosto",
+        "setembro",
+        "outubro",
+        "novembro",
+        "dezembro"
+    ]
+
+    agora = datetime.now()
+
+    data_atual = (
+        f"{dias[agora.weekday()]}, "
+        f"{agora.day} de "
+        f"{meses[agora.month-1]} de "
+        f"{agora.year}"
+    ).capitalize()
 
     return render_template_string(
         PAGINA_INICIO,
